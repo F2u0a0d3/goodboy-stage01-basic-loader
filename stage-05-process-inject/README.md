@@ -74,12 +74,12 @@ svcctl.exe                              charmap.exe (suspended)
 │ → intermediate      │                │                          │
 │   (XOR'd, NOT sc)   │                │                          │
 │                     │                │                          │
-│ CreateProcessW(SUSP)│───creates────►│ (main thread suspended)  │
-│ VirtualAllocEx(RW)  │───allocates──►│ [empty RW region]        │
-│ WriteProcessMemory  │───writes────►│ [stub|key|intermediate]  │
-│ VirtualProtectEx    │───protects──►│ [RWX]                    │
-│ QueueUserAPC(stub)  │───queues────►│ APC: run stub at resume  │
-│ ResumeThread        │───resumes───►│ stub XOR-decrypts        │
+│ CreateProcessW(SUSP)│───creates─────►│ (main thread suspended)  │
+│ VirtualAllocEx(RW)  │───allocates───►│ [empty RW region]        │
+│ WriteProcessMemory  │───writes──────►│ [stub|key|intermediate]  │
+│ VirtualProtectEx    │───protects────►│ [RWX]                    │
+│ QueueUserAPC(stub)  │───queues──────►│ APC: run stub at resume  │
+│ ResumeThread        │───resumes─────►│ stub XOR-decrypts        │
 │                     │                │ stub JMPs to shellcode   │
 │ [exit — job done]   │                │ MessageBox("GoodBoy")    │
 └─────────────────────┘                └──────────────────────────┘

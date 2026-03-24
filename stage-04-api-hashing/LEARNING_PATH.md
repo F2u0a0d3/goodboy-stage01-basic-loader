@@ -746,23 +746,122 @@ rule Goodboy_Hash_Constants
 }
 ```
 
-### The Detection Invariant
+### The Detection Invariant: gs:[0x60]
 
-The Sigma rule from Stage 01 (detecting RW→RX memory transitions) still works against Stage 04. But Stage 04 adds a new behavioral signature:
+The `gs:[0x60]` PEB access byte sequence (`65 48 8B 04 25 60 00 00 00`) is present in ALL 15 Goodboy stages. It's also present in virtually all PEB-walking malware. This single 9-byte pattern is the strongest static detection point in the entire course.
 
-**LoadLibraryA followed by immediate export table access**: When the binary calls `LoadLibraryA("user32.dll")` and then immediately walks the export table of the newly loaded module, this sequence is unusual. Legitimate software that loads DLLs typically uses `GetProcAddress`, not manual export table parsing.
+The Stage 01 Sigma rule (detecting RW→RX memory transitions) also still works against Stage 04 — the VirtualAlloc(RW) → VirtualProtect(RX) behavioral pattern is the same.
 
-> **Q6**: The `gs:[0x60]` PEB access byte sequence (`65 48 8B 04 25 60 00 00 00`) is the strongest single detection. Can an attacker avoid it?
+> **Q6**: Can an attacker avoid the `gs:[0x60]` byte sequence?
 
 <details>
 <summary>Answer</summary>
 
-Yes, several approaches:
-1. **Indirect access**: `mov rax, gs:[0x30]` (TEB self-pointer at +0x30), then `mov rax, [rax+0x60]` (TEB→PEB). Different byte sequence, same result
-2. **NtQueryInformationProcess**: Syscall that returns PEB address. No gs-segment access needed
-3. **Obfuscated offset**: Build 0x60 from arithmetic (`mov ecx, 0x30; add ecx, ecx; mov rax, gs:[rcx]`). The constant 0x60 never appears as an immediate
+Yes:
+1. **Indirect access**: `mov rax, gs:[0x30]` (TEB self-pointer), then `mov rax, [rax+0x60]` — different bytes, same result
+2. **NtQueryInformationProcess**: Syscall returning PEB address — no gs-segment access
+3. **Computed offset**: Build 0x60 from arithmetic so it never appears as an immediate
 
-**Defense response**: Target the BEHAVIOR (iterating a linked list of modules and parsing PE headers) rather than a specific instruction. ETW traces see all approaches. The `gs:[0x60]` YARA rule is a fast first-pass filter, not a final verdict.
+**Defense response**: Target the BEHAVIOR (linked list traversal + PE header parsing) rather than a specific instruction. ETW traces all approaches.
+
+</details>
+
+---
+
+## Section 7B: Blue Team — Dynamic Detection of Hash-Based Resolution
+
+### Exercise 8: Trace Resolved APIs with API Monitor (15 min)
+
+API Monitor intercepts at the function entry point — it catches calls regardless of how the binary found the address (IAT import, GetProcAddress, or PEB-walking hash resolution).
+
+**Steps**:
+1. Download API Monitor (free, rohitab.com)
+2. Configure to monitor: `kernel32.dll!VirtualAlloc`, `kernel32.dll!VirtualProtect`, `kernel32.dll!CreateThread`, `kernel32.dll!LoadLibraryA`, `user32.dll!MessageBoxW`
+3. Launch `netdiag.exe` under API Monitor
+4. Observe: ALL five calls appear in the trace even though NONE are in the IAT
+
+**Key insight**: Dynamic API resolution defeats static analysis (IAT examination) but NOT runtime monitoring. API Monitor, ETW, and debugger breakpoints all see the resolved calls. The hiding is partial — it only works against tools that examine the binary without executing it.
+
+**Compare with IAT analysis**: Open `netdiag.exe` in PE-bear. The import table shows only benign APIs (GetSystemInfo, GetTickCount64). Now compare with the API Monitor trace — the gap between "what the IAT shows" and "what actually gets called" is the entire attack surface that hash-based resolution hides.
+
+### Exercise 9: Capability Assessment from Rainbow Table (15 min)
+
+**Scenario**: You're a threat analyst. You've built the rainbow table and reversed the 13 hash constants. Write a capability assessment.
+
+**Your rainbow table output**:
+```
+0x0B6D79E7 = [DLL] kernel32.dll
+0x090DD676 = [DLL] user32.dll
+0x0EC9AE0F = [DLL] ntdll.dll
+0x1C02DEBA = kernel32.dll!VirtualAlloc
+0xA234F8D5 = kernel32.dll!VirtualProtect
+0x9257966A = kernel32.dll!CreateThread
+0xA63CFCB1 = kernel32.dll!WaitForSingleObject
+0xE95098B3 = kernel32.dll!CloseHandle
+0xE8EBE5AB = kernel32.dll!LoadLibraryA
+0x7AC89F36 = user32.dll!MessageBoxW
+0x4C5F6FA9 = ntdll.dll!NtAllocateVirtualMemory
+0x4FA8A779 = ntdll.dll!NtProtectVirtualMemory
+0xC0E8DF85 = ntdll.dll!NtCreateThreadEx
+```
+
+**Complete this assessment**:
+
+| Capability | Evidence (APIs) | Risk Level |
+|-----------|----------------|------------|
+| Code injection (same-process) | ___ | ___ |
+| Cross-DLL pivoting | ___ | ___ |
+| Native syscall capability | ___ | ___ |
+| User interaction | ___ | ___ |
+
+<details>
+<summary>Completed Assessment</summary>
+
+| Capability | Evidence | Risk Level |
+|-----------|----------|------------|
+| Code injection (same-process) | VirtualAlloc + VirtualProtect + CreateThread = allocate → protect → execute chain | HIGH — classic shellcode loader pattern |
+| Cross-DLL pivoting | LoadLibraryA = can load ANY DLL and resolve ANY export | HIGH — extends attack surface beyond pre-loaded DLLs |
+| Native syscall capability | NtAllocateVirtualMemory + NtProtectVirtualMemory + NtCreateThreadEx resolved from ntdll | HIGH — can bypass kernel32/kernelbase hooks entirely. Even if these aren't called NOW, the binary has the addresses ready |
+| User interaction | MessageBoxW from user32.dll | LOW — proof-of-execution indicator, not offensive by itself |
+
+**Threat summary**: This binary is a shellcode loader with cross-DLL pivoting and latent syscall capability. The ntdll API resolution suggests the framework has or will have direct syscall variants (confirmed: Stage 07). The VirtualAlloc+VirtualProtect+CreateThread chain combined with PEB-walking resolution is consistent with Cobalt Strike beacon loaders, MuddyWater RustyWater, and similar post-exploitation frameworks.
+
+**Recommended detection priority**:
+1. YARA: Deploy `Goodboy_Additive_Hash_Resolver` and `Goodboy_Hash_Constants` rules
+2. EDR: Alert on processes that call LoadLibraryA followed by immediate export table reads (not GetProcAddress)
+3. ETW: Monitor NtProtectVirtualMemory for RW→RX transitions from unsigned binaries
+4. Memory: Scan for executable private memory regions (pe-sieve/Moneta) in processes matching YARA hits
+
+</details>
+
+### Exercise 10: Detect the LoadLibraryA → Export Walk Pattern (10 min)
+
+Stage 04 introduces a new behavioral pattern not seen in Stages 01-03: after calling `LoadLibraryA`, the binary immediately walks the PEB module list and parses the newly loaded DLL's export table. Legitimate software calls `GetProcAddress` after `LoadLibraryA` — it doesn't manually parse PE headers.
+
+**Detection approach using ETW**:
+
+The Microsoft-Windows-Kernel-Process provider logs `LoadLibraryA` calls. If an unsigned process loads a DLL and then accesses the DLL's export table memory region (readable via page fault telemetry or hardware breakpoints), the sequence is suspicious.
+
+**Detection approach using x64dbg** (for manual analysis):
+
+1. Set breakpoint on `LoadLibraryA` (system function, not the resolved one)
+2. When it hits, note which DLL is loaded (RCX = pointer to DLL name string)
+3. After the call returns (RAX = DLL base address), set a hardware read breakpoint on that module's export directory
+4. If the export directory breakpoint fires from the SAME process within milliseconds — the process is walking exports manually instead of using GetProcAddress
+
+**Why this pattern matters**: `GetProcAddress` is the legitimate way to resolve functions from a loaded DLL. Manual export table parsing after LoadLibraryA indicates the binary is avoiding `GetProcAddress` — either to hide from IAT analysis or because it uses hash-based resolution. Both are strong indicators of offensive tooling.
+
+> **Q7**: Could a legitimate application trigger this pattern (LoadLibraryA + immediate export walk)?
+
+<details>
+<summary>Answer</summary>
+
+Rarely, but yes:
+- **Plugin systems** that support multiple DLL formats may parse PE headers to validate the plugin before calling its entry point
+- **DRM/anti-cheat** software sometimes walks export tables to verify DLL integrity
+- **.NET CLR** and **Java JNI** perform some PE introspection when loading native libraries
+
+However, the COMBINATION of: (1) PEB-walking API resolution, (2) hash constants in .rdata, (3) LoadLibraryA + export walk, and (4) subsequent VirtualAlloc + VirtualProtect + CreateThread is extremely unlikely in legitimate software. Each indicator alone has false positives; together they are definitive.
 
 </details>
 

@@ -32,8 +32,8 @@ Stage 07 (direct):                    Stage 08 (indirect):
 │   mov eax, SSN   │                 │   mov eax, SSN   │
 │   syscall  ← HERE│                 │   call gadget ──────┐
 │                  │                 │                  │  │
-│ YARA: 0F 05 ✓   │                 │ YARA: 0F 05 ✗   │  │
-│ Stack: .text  ✓  │                 │ Stack: ntdll  ✗  │  │
+│ YARA: 0F 05 ✓    │                 │ YARA: 0F 05 ✗   │  │
+│ Stack: .text  ✓  │                 │ Stack: ntdll  ✗ │  │
 └──────────────────┘                 └──────────────────┘  │
                                      ┌──────────────────┐  │
                                      │ ntdll .text:     │  │
@@ -659,21 +659,21 @@ indirect-syscalls.exe:
   PEB.BeingDebugged              [gate 4]
   sandbox_check()                [gate 5]
 
-  ┌─── Phase 1: SSN + Gadget Resolution ───────────────────────┐
-  │ find_module(H_NTDLL) → ntdll base                          │
-  │ read_ssn() × 5 → SSNs for alloc/protect/thread/wait/close  │
-  │ find_syscall_gadget() → 0F 05 C3 inside ntdll .text  (NEW) │
+  ┌─── Phase 1: SSN + Gadget Resolution ────────────────────────┐
+  │ find_module(H_NTDLL) → ntdll base                           │
+  │ read_ssn() × 5 → SSNs for alloc/protect/thread/wait/close   │
+  │ find_syscall_gadget() → 0F 05 C3 inside ntdll .text  (NEW)  │
   └─────────────────────────────────────────────────────────────┘
 
   XOR decrypt 302-byte shellcode
 
-  ┌─── Phase 2: Indirect Syscalls (ALL via gadget) ────────────┐
-  │ indirect_alloc(ssn, gadget, ..., RW)    → CALL ntdll gadget│
+  ┌─── Phase 2: Indirect Syscalls (ALL via gadget) ─────────────┐
+  │ indirect_alloc(ssn, gadget, ..., RW)    → CALL ntdll gadget │
   │ copy + scrub                                                │
-  │ indirect_protect(ssn, gadget, ..., RX)  → CALL ntdll gadget│
-  │ indirect_create_thread(ssn, gadget, ...)→ CALL ntdll gadget│
-  │ indirect_wait(ssn, gadget, ...)         → CALL ntdll gadget│
-  │ indirect_close(ssn, gadget, ...)        → CALL ntdll gadget│
+  │ indirect_protect(ssn, gadget, ..., RX)  → CALL ntdll gadget │
+  │ indirect_create_thread(ssn, gadget, ...)→ CALL ntdll gadget │
+  │ indirect_wait(ssn, gadget, ...)         → CALL ntdll gadget │
+  │ indirect_close(ssn, gadget, ...)        → CALL ntdll gadget │
   └─────────────────────────────────────────────────────────────┘
 
   → MessageBox("GoodBoy") appears

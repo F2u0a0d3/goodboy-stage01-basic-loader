@@ -355,14 +355,14 @@ anti-debug.exe execution:
   sandbox_check()                [gate 5 — CPU/RAM/disk/uptime]
   run_gui_lifecycle()            [gate 5b — behavioral camouflage]
 
-  ┌─── Gate 6: is_debugged() — The Anti-Debug Gauntlet ────────┐
-  │  1. PEB.BeingDebugged           ← cheapest                 │
-  │  2. PEB.NtGlobalFlag & 0x70    ← cheap                     │
-  │  3. NtQIP(DebugPort = 7)       ← kernel query              │
-  │  4. NtQIP(DebugObject = 0x1E)  ← kernel query              │
-  │  5. NtQIP(DebugFlags = 0x1F)   ← kernel query              │
-  │  6. RDTSC timing               ← CPU-level                 │
-  │  7. HW breakpoint DR0-DR3      ← CPU-level                 │
+  ┌─── Gate 6: is_debugged() — The Anti-Debug Gauntlet ─────────┐
+  │  1. PEB.BeingDebugged           ← cheapest                  │
+  │  2. PEB.NtGlobalFlag & 0x70    ← cheap                      │
+  │  3. NtQIP(DebugPort = 7)       ← kernel query               │
+  │  4. NtQIP(DebugObject = 0x1E)  ← kernel query               │
+  │  5. NtQIP(DebugFlags = 0x1F)   ← kernel query               │
+  │  6. RDTSC timing               ← CPU-level                  │
+  │  7. HW breakpoint DR0-DR3      ← CPU-level                  │
   │                                                             │
   │  ANY true → silent exit (no error message, no trace)        │
   └─────────────────────────────────────────────────────────────┘

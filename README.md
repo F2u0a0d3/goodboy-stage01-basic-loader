@@ -36,11 +36,11 @@ Each stage adds one new offensive technique on top of the previous. Each Learnin
 | [**01**](stage-01-basic-loader/) | **Basic Loader** | XOR decrypt, PEB-walk API hashing, VirtualAlloc->VirtualProtect->CreateThread, anti-sandbox, YARA/Sigma rules | 1,649 | Released |
 | [**02**](stage-02-xor-loader/) | **XOR Cryptanalysis** | Known-plaintext attack, Index of Coincidence, entropy classification, memory scrubbing, VT Submission Paradox | 1,237 | Released |
 | [**03**](stage-03-aes-loader/) | **AES + Jigsaw** | RC4 stream cipher, entropy normalization via payload fragmentation, nonce/integrity verification, multi-scale entropy detection | 1,492 | Released |
-| [**04**](stage-04-api-hashing/) | **API Hashing** | Additive hash deep dive, cross-DLL resolution (kernel32+user32+ntdll), rainbow tables, gs:[0x60] detection invariant | 987 | Released |
+| [**04**](stage-04-api-hashing/) | **API Hashing** | Additive hash deep dive, cross-DLL resolution (kernel32+user32+ntdll), rainbow tables, gs:[0x60] detection invariant | 1,085 | Released |
 | [**05**](stage-05-process-inject/) | **APC Injection** | Early Bird APC, cross-process execution, remote-side decryption, decoder stub, triple encryption | 1,133 | Released |
 | [**06**](stage-06-earlybird-apc/) | **Variant Analysis** | Same technique different keys, family clustering, cross-variant YARA, invariant detection | 1,191 | Released |
-| [**07**](stage-07-direct-syscalls/) | **Direct Syscalls** | SSN resolution, inline syscall instruction, hook bypass, call stack forensics, evasion trade-off | 768 | Released |
-| [**08**](stage-08-indirect-syscalls/) | **Indirect Syscalls** | Gadget scanning, CALL-based indirection, call stack evasion, zero syscall in .text | 527 | Released |
+| [**07**](stage-07-direct-syscalls/) | **Direct Syscalls** | SSN resolution, inline syscall instruction, hook bypass, call stack forensics, evasion trade-off | 883 | Released |
+| [**08**](stage-08-indirect-syscalls/) | **Indirect Syscalls** | Gadget scanning, CALL-based indirection, call stack evasion, zero syscall in .text | 783 | Released |
 | [**09**](stage-09-anti-debug/) | **Anti-Debug** | 7 techniques: PEB&times;2, NtQIP&times;3, RDTSC timing, hardware breakpoints, evasion paradox | 766 | Released |
 | 10 | Anti-Sandbox | Hardware fingerprinting, weighted scoring, VM evasion | — | Planned |
 | 11 | Persistence | Registry Run key, scheduled tasks, COM hijacking | — | Planned |
@@ -59,7 +59,7 @@ Every stage folder contains:
 |------|------------|
 | `*.exe` | The compiled binary (~280-300 KB, Rust, PE64) — open in Ghidra/x64dbg |
 | `README.md` | Quick start guide, technical details, gate architecture |
-| `LEARNING_PATH.md` | **The main content** — 1,000-1,600 lines of guided analysis with theory, exercises, Python scripts, detection rules, and adversarial challenges |
+| `LEARNING_PATH.md` | **The main content** — 700-1,600 lines of guided analysis with theory, exercises, Python scripts, detection rules, and adversarial challenges |
 
 **No source code is included.** You reverse-engineer the binary using the Learning Path as your guide — the same way you'd analyze real malware.
 
@@ -165,10 +165,10 @@ The Learning Paths document the full forensic timeline of each binary's VT histo
 |--------|-------|
 | Stages | 15 (9 released, 6 planned) |
 | Total learning content | 10,200+ lines (released stages) |
-| Exercises | 30+ hands-on (released stages) |
-| YARA rules | 6+ (with adversarial countermeasures) |
-| Sigma rules | 3+ (behavioral detection) |
-| Python scripts | 15+ (solvers, scanners, crypto tools) |
+| Exercises | 60+ hands-on (released stages) |
+| YARA rules | 18+ (with adversarial countermeasures) |
+| Sigma rules | 7+ (behavioral detection) |
+| Python scripts | 25+ (solvers, scanners, crypto tools) |
 | AV engines tested | 76 |
 | Languages | Rust (binaries), Python (tooling) |
 | Platform | Windows x64 |

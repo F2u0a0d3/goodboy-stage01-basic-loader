@@ -39,7 +39,7 @@ Each stage adds one new offensive technique on top of the previous. Each Learnin
 | [**04**](stage-04-api-hashing/) | **API Hashing** | Additive hash deep dive, cross-DLL resolution (kernel32+user32+ntdll), rainbow tables, gs:[0x60] detection invariant | 987 | Released |
 | [**05**](stage-05-process-inject/) | **APC Injection** | Early Bird APC, cross-process execution, remote-side decryption, decoder stub, triple encryption | 1,133 | Released |
 | [**06**](stage-06-earlybird-apc/) | **Variant Analysis** | Same technique different keys, family clustering, cross-variant YARA, invariant detection | 1,191 | Released |
-| 07 | "Direct Syscalls" | The name is a lie — and that's the lesson | — | Planned |
+| [**07**](stage-07-direct-syscalls/) | **Direct Syscalls** | SSN resolution, inline syscall instruction, hook bypass, call stack forensics, evasion trade-off | 768 | Released |
 | 08 | Indirect Syscalls | Call stack forensics, gadget scanning, SSN resolution | — | Planned |
 | 09 | Anti-Debug | 7 techniques: PEB, NtQueryInfo, RDTSC, hardware breakpoints, process enumeration | — | Planned |
 | 10 | Anti-Sandbox | Hardware fingerprinting, weighted scoring, VM evasion | — | Planned |
@@ -163,8 +163,8 @@ The Learning Paths document the full forensic timeline of each binary's VT histo
 
 | Metric | Value |
 |--------|-------|
-| Stages | 15 (6 released, 9 planned) |
-| Total learning content | 7,700+ lines (released stages) |
+| Stages | 15 (7 released, 8 planned) |
+| Total learning content | 8,500+ lines (released stages) |
 | Exercises | 30+ hands-on (released stages) |
 | YARA rules | 6+ (with adversarial countermeasures) |
 | Sigma rules | 3+ (behavioral detection) |

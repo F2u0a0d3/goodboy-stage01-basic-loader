@@ -272,6 +272,128 @@ This is exactly why Stage 08 exists — it solves the YARA detection problem fro
 
 ---
 
+## Section 3B: The CALL Offset Math — Worked Example
+
+### Why Stack Args Shift by -8
+
+This is the most subtle detail of indirect syscalls. When using `CALL gadget` instead of inline `syscall`, the `CALL` pushes an 8-byte return address onto the stack. This shifts ALL stack positions relative to the kernel's perspective.
+
+**Direct syscall (Stage 07)** — NtAllocateVirtualMemory:
+```
+Before syscall:
+  [rsp+0x00] = (unused)
+  [rsp+0x28] = arg5 (AllocationType = 0x3000)
+  [rsp+0x30] = arg6 (Protect = 0x04)
+
+Kernel reads arg5 from [rsp+0x28] ← CORRECT
+```
+
+**Indirect syscall (Stage 08)** — same function:
+```
+Before CALL gadget:
+  [rsp+0x00] = (unused)
+  [rsp+0x20] = arg5 (AllocationType = 0x3000)  ← shifted -8
+  [rsp+0x28] = arg6 (Protect = 0x04)            ← shifted -8
+
+After CALL (pushes 8 bytes):
+  [rsp+0x00] = return address (pushed by CALL)
+  [rsp+0x08] = (was rsp+0x00)
+  ...
+  [rsp+0x28] = arg5 (was at rsp+0x20)  ← kernel reads here ✓
+  [rsp+0x30] = arg6 (was at rsp+0x28)  ← kernel reads here ✓
+```
+
+**The formula**: `pre_call_offset = kernel_offset - 8`
+
+| Argument | Kernel expects at | Direct (Stage 07) | Indirect (Stage 08) |
+|----------|-------------------|--------------------|--------------------|
+| arg5 | `[rsp+0x28]` | `[rsp+0x28]` | `[rsp+0x20]` |
+| arg6 | `[rsp+0x30]` | `[rsp+0x30]` | `[rsp+0x28]` |
+| arg7 | `[rsp+0x38]` | `[rsp+0x38]` | `[rsp+0x30]` |
+
+### Exercise 3B: Verify the Offset in x64dbg (10 min)
+
+1. Set breakpoint on the `call` instruction inside `indirect_alloc`
+2. Note RSP. Check `[RSP+0x20]` — should contain `0x3000` (MEM_COMMIT | MEM_RESERVE)
+3. Step INTO the `call` — RSP decreases by 8
+4. Now check `[RSP+0x28]` — same value `0x3000` (shifted up by 8 from the CALL push)
+5. This is where the kernel reads arg5 — correct!
+
+> **Q**: What happens if you use the Stage 07 offsets (`+0x28/+0x30`) with CALL instead of inline syscall?
+
+<details>
+<summary>Answer</summary>
+
+The kernel reads the wrong values. It expects arg5 at `[rsp+0x28]` after the CALL. If you placed arg5 at `[pre_call_rsp+0x28]`, after the CALL push it's at `[rsp+0x30]` — the kernel reads arg6 as arg5 and garbage as arg6. The syscall either fails (STATUS_INVALID_PARAMETER) or corrupts memory.
+
+This is the #1 implementation bug in indirect syscalls. Getting the offset wrong crashes the process.
+
+</details>
+
+---
+
+## Section 3C: VT Evasion — The Detection Surface Shift
+
+### Empirical Results: Stage 07 vs Stage 08
+
+| Binary | Score | Engines | `0F 05` in .text? |
+|--------|-------|---------|-------------------|
+| Stage 07 (direct) | 3/76 | ESET + **Google** + **Ikarus** | Yes (3 instances) |
+| **Stage 08 (indirect)** | **3/76** | **ESET + AVG + Avast** | **No (0 instances)** |
+
+Same total score — **completely different engines**:
+- **Google Detected + Ikarus Trojan.Win64.Crypt**: Triggered by the `syscall` (0F 05) opcode in .text → ELIMINATED by indirect approach
+- **AVG/Avast MalwareX-gen [Misc]**: ML classifiers triggered by PEB walk code mass → RETURNED because the gadget scanner adds code without adding benign API patterns
+
+**The lesson**: Indirect syscalls are not "better" or "worse" than direct — they trade one detection surface for another. The optimal approach depends on which engines your target environment uses.
+
+### Why AVG/Avast Returned
+
+Stage 07 didn't trigger AVG/Avast because its `syscall` wrappers used raw inline asm — very compact code. Stage 08's gadget scanner adds ~80 lines of PE section parsing (reading section headers, comparing `.text` name, scanning bytes). This code mass is structurally similar to PE analysis tools — which ML classifiers associate with offensive tooling.
+
+**The irony**: The gadget scanner makes the binary MORE evasive against instruction-pattern scanners (Google/Ikarus) but LESS evasive against ML classifiers (AVG/Avast). Security engineering is about choosing which detection surface you're willing to accept.
+
+---
+
+## Section 3D: Hands-On Lab — Trace the Indirect Syscall
+
+### Exercise 3D: Follow Execution Through the Gadget (20 min)
+
+1. Open `indirect-syscalls.exe` in x64dbg with ScyllaHide
+2. Find `indirect_alloc` in the binary (search for `sub rsp, 0x38`)
+3. Set a breakpoint on the `call` instruction (the one that targets the ntdll gadget)
+4. When hit:
+   - Note RAX (should contain the SSN)
+   - Note R10 (should contain the first argument — process handle = -1)
+   - Note the CALL target address — it should be inside ntdll's address range
+5. Step INTO the call → you land at ntdll's `syscall; ret`
+6. Step over `syscall` → kernel executes NtAllocateVirtualMemory
+7. `ret` pops the return address → back in your .text section
+8. Check RAX — NTSTATUS (0 = success)
+
+**Key observation**: In the call stack window, the return address after `syscall` shows **ntdll** — not your binary. This is exactly what makes indirect syscalls harder to detect via call stack analysis.
+
+### Exercise 3E: Compare Call Stacks (10 min)
+
+Run both Stage 07 and Stage 08 in x64dbg. At the moment of the syscall:
+
+**Stage 07 call stack:**
+```
+  0x00007FF6XXXX1234  direct-syscalls.exe!syscall_alloc+0x2A  ← YOUR code
+  0x00007FF6XXXX5678  direct-syscalls.exe!main+0x1A0
+```
+
+**Stage 08 call stack:**
+```
+  0x00007FFB1234ABCD  ntdll.dll!NtAllocateVirtualMemory+0x12  ← ntdll (legitimate)
+  0x00007FF6XXXX1234  indirect-syscalls.exe!indirect_alloc+0x30
+  0x00007FF6XXXX5678  indirect-syscalls.exe!main+0x1A0
+```
+
+The Stage 08 call stack includes ntdll as the syscall origin — indistinguishable from a legitimate call.
+
+---
+
 ## Section 4: Detection Engineering — Catching Indirect Syscalls
 
 ### The Gadget Scanning Pattern
@@ -325,6 +447,74 @@ The CALL target in an indirect syscall lands at `syscall;ret` which is near the 
 2. Does the CALL target match any exported function's start address? (NO — it's mid-function)
 3. **Flag**: CALL to ntdll at a non-exported offset = indirect syscall
 
+### Exercise 4C: Compare Gadget Location to Export Addresses (15 min)
+
+```python
+#!/usr/bin/env python3
+"""Find which Nt* function a gadget falls INSIDE — proves it's mid-function."""
+import ctypes
+
+kernel32 = ctypes.windll.kernel32
+ntdll_base = kernel32.GetModuleHandleA(b"ntdll.dll")
+
+# 1. Find the first syscall;ret gadget
+e_lfanew = ctypes.c_int.from_address(ntdll_base + 0x3C).value
+nt = ntdll_base + e_lfanew
+num_secs = ctypes.c_ushort.from_address(nt + 6).value
+opt_size = ctypes.c_ushort.from_address(nt + 20).value
+first_sec = nt + 24 + opt_size
+
+gadget_addr = None
+for i in range(num_secs):
+    sec = first_sec + i * 40
+    name = bytes((ctypes.c_ubyte * 8).from_address(sec))
+    if name.startswith(b".text"):
+        va = ctypes.c_uint.from_address(sec + 12).value
+        vs = ctypes.c_uint.from_address(sec + 8).value
+        text = ntdll_base + va
+        for j in range(vs - 3):
+            if (ctypes.c_ubyte.from_address(text+j).value == 0x0F and
+                ctypes.c_ubyte.from_address(text+j+1).value == 0x05 and
+                ctypes.c_ubyte.from_address(text+j+2).value == 0xC3):
+                gadget_addr = text + j
+                break
+        break
+
+if not gadget_addr:
+    print("No gadget found!")
+    exit()
+
+print(f"First gadget: 0x{gadget_addr:016x} (ntdll+0x{gadget_addr - ntdll_base:06x})")
+
+# 2. Find which exported function contains this address
+export_rva = ctypes.c_uint.from_address(ntdll_base + e_lfanew + 0x88).value
+export_dir = ntdll_base + export_rva
+num_names = ctypes.c_uint.from_address(export_dir + 0x18).value
+names_rva = ctypes.c_uint.from_address(export_dir + 0x20).value
+funcs_rva = ctypes.c_uint.from_address(export_dir + 0x1C).value
+ords_rva = ctypes.c_uint.from_address(export_dir + 0x24).value
+
+# Find nearest export BELOW the gadget
+nearest_name = "???"
+nearest_addr = 0
+for i in range(num_names):
+    ordinal = ctypes.c_ushort.from_address(ntdll_base + ords_rva + i * 2).value
+    func_rva = ctypes.c_uint.from_address(ntdll_base + funcs_rva + ordinal * 4).value
+    func_addr = ntdll_base + func_rva
+    if func_addr <= gadget_addr and func_addr > nearest_addr:
+        nearest_addr = func_addr
+        name_rva = ctypes.c_uint.from_address(ntdll_base + names_rva + i * 4).value
+        nearest_name = ctypes.string_at(ntdll_base + name_rva).decode()
+
+offset = gadget_addr - nearest_addr
+print(f"Nearest export: {nearest_name} at 0x{nearest_addr:016x}")
+print(f"Gadget is at {nearest_name}+0x{offset:x} (offset {offset} bytes into the function)")
+print(f"")
+print(f"Is gadget == function start? {gadget_addr == nearest_addr}")
+print(f"An EDR checking: CALL target matches export address? NO (mid-function)")
+print(f"This is how EDRs detect indirect syscalls.")
+```
+
 ### ETW Still Sees Everything
 
 ```
@@ -346,6 +536,72 @@ In x64dbg, trace the indirect syscall execution:
    - Find the nearest exported function below this address
    - If the CALL target is offset from the function start → indirect syscall
 4. The offset will be near the END of the function (where `syscall;ret` lives)
+
+### Sigma Rule: Suspicious PE Section Scanning
+
+```yaml
+title: Process Scans PE Section Headers of System DLLs
+id: goodboy-stage08-gadget-scan
+status: experimental
+description: >
+    Detects a process reading PE section headers of ntdll.dll or kernel32.dll,
+    which may indicate gadget scanning for indirect syscalls.
+logsource:
+    product: windows
+    category: process_access
+detection:
+    selection:
+        TargetImage|endswith:
+            - '\ntdll.dll'
+        GrantedAccess|contains: '0x10'  # PROCESS_VM_READ
+    filter_system:
+        SourceImage|endswith:
+            - '\csrss.exe'
+            - '\smss.exe'
+            - '\MsMpEng.exe'
+    condition: selection and not filter_system
+level: medium
+tags:
+    - attack.defense_evasion
+    - attack.t1562.001
+```
+
+### Exercise 4B: Build a Gadget Address Validator (15 min)
+
+```python
+#!/usr/bin/env python3
+"""Detect indirect syscalls by checking if CALL targets are mid-function in ntdll."""
+import ctypes
+
+kernel32 = ctypes.windll.kernel32
+ntdll_base = kernel32.GetModuleHandleA(b"ntdll.dll")
+
+# Parse ntdll exports to get all function start addresses
+e_lfanew = ctypes.c_int.from_address(ntdll_base + 0x3C).value
+export_rva = ctypes.c_uint.from_address(ntdll_base + e_lfanew + 0x88).value
+export_dir = ntdll_base + export_rva
+num_names = ctypes.c_uint.from_address(export_dir + 0x18).value
+names_rva = ctypes.c_uint.from_address(export_dir + 0x20).value
+funcs_rva = ctypes.c_uint.from_address(export_dir + 0x1C).value
+ords_rva  = ctypes.c_uint.from_address(export_dir + 0x24).value
+
+exported_addrs = set()
+for i in range(num_names):
+    ordinal = ctypes.c_ushort.from_address(ntdll_base + ords_rva + i * 2).value
+    func_rva = ctypes.c_uint.from_address(ntdll_base + funcs_rva + ordinal * 4).value
+    exported_addrs.add(ntdll_base + func_rva)
+
+def check_call_target(addr):
+    """Returns True if addr is a legitimate exported function start."""
+    return addr in exported_addrs
+
+# Example: check a known gadget address
+# (In practice, you'd get this from tracing the binary's CALL targets)
+test_addr = ntdll_base + 0x12345  # hypothetical mid-function address
+print(f"Is 0x{test_addr:016x} an exported function? {check_call_target(test_addr)}")
+print(f"Total ntdll exports: {len(exported_addrs)}")
+print(f"If a CALL targets ntdll but NOT an exported address → indirect syscall")
+```
 
 ---
 

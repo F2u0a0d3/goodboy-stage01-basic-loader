@@ -533,6 +533,122 @@ The `Microsoft-Windows-Threat-Intelligence` ETW provider is the kernel-level det
 
 </details>
 
+### Sigma Rule: Direct Syscall Behavioral Pattern
+
+```yaml
+title: Process Issues Syscall Without ntdll in Call Stack
+id: goodboy-stage07-direct-syscall
+status: experimental
+description: >
+    Detects processes where Nt* API calls originate from non-ntdll code,
+    indicating direct syscall usage. Requires ETW Threat Intelligence or
+    an EDR that logs syscall origin addresses.
+logsource:
+    product: windows
+    category: process_access
+detection:
+    selection:
+        CallTrace|contains:
+            - 'NtAllocateVirtualMemory'
+            - 'NtProtectVirtualMemory'
+    filter_normal:
+        CallTrace|contains: 'ntdll.dll'
+    condition: selection and not filter_normal
+level: high
+tags:
+    - attack.defense_evasion
+    - attack.t1562.001
+falsepositives:
+    - Security tools that use direct syscalls for self-protection
+```
+
+### Exercise 5: Build an SSN Dumper (15 min)
+
+Write a Python script that reads SSNs from ALL Nt* functions in ntdll:
+
+```python
+#!/usr/bin/env python3
+"""Dump SSNs for all Nt* functions from ntdll stub bytes."""
+import ctypes
+
+kernel32 = ctypes.windll.kernel32
+ntdll_base = kernel32.GetModuleHandleA(b"ntdll.dll")
+
+# Parse exports
+e_lfanew = ctypes.c_int.from_address(ntdll_base + 0x3C).value
+export_rva = ctypes.c_uint.from_address(ntdll_base + e_lfanew + 0x88).value
+export_dir = ntdll_base + export_rva
+num_names = ctypes.c_uint.from_address(export_dir + 0x18).value
+names_rva = ctypes.c_uint.from_address(export_dir + 0x20).value
+funcs_rva = ctypes.c_uint.from_address(export_dir + 0x1C).value
+ords_rva  = ctypes.c_uint.from_address(export_dir + 0x24).value
+
+nt_funcs = []
+for i in range(num_names):
+    name_rva = ctypes.c_uint.from_address(ntdll_base + names_rva + i * 4).value
+    name = ctypes.string_at(ntdll_base + name_rva).decode("ascii", errors="ignore")
+
+    if not name.startswith("Nt") or name.startswith("Ntdll"):
+        continue
+
+    ordinal = ctypes.c_ushort.from_address(ntdll_base + ords_rva + i * 2).value
+    func_rva = ctypes.c_uint.from_address(ntdll_base + funcs_rva + ordinal * 4).value
+    func_addr = ntdll_base + func_rva
+
+    # Read stub: 4C 8B D1 B8 XX XX 00 00
+    stub = (ctypes.c_ubyte * 8).from_address(func_addr)
+    if stub[0] == 0x4C and stub[1] == 0x8B and stub[2] == 0xD1 and stub[3] == 0xB8:
+        ssn = stub[4] | (stub[5] << 8)
+        nt_funcs.append((ssn, name))
+    else:
+        nt_funcs.append((-1, f"{name} (HOOKED!)"))
+
+nt_funcs.sort()
+print(f"{'SSN':>6s}  {'Function':40s}  Status")
+print("-" * 55)
+for ssn, name in nt_funcs:
+    if ssn >= 0:
+        print(f"0x{ssn:04X}  {name:40s}  OK")
+    else:
+        print(f"  ???   {name:40s}  HOOKED")
+
+print(f"\nTotal Nt* functions: {len(nt_funcs)}")
+print(f"Hooked: {sum(1 for s,_ in nt_funcs if s < 0)}")
+```
+
+**Run this on your VM.** Note which SSNs correspond to the 5 APIs used in Stage 07. Then run it with an EDR installed — see which functions are hooked.
+
+### Exercise 6: Detect Direct Syscalls via Return Address (10 min)
+
+```python
+#!/usr/bin/env python3
+"""
+Conceptual: detect direct syscalls by checking if return addresses
+fall within ntdll's address range after Nt* calls.
+
+In practice, this requires ETW or a kernel callback. This script
+demonstrates the LOGIC that EDR products use.
+"""
+import ctypes
+
+kernel32 = ctypes.windll.kernel32
+ntdll_base = kernel32.GetModuleHandleA(b"ntdll.dll")
+
+# Approximate ntdll range (base to base + 2MB)
+ntdll_end = ntdll_base + 0x200000
+
+print(f"ntdll range: 0x{ntdll_base:016x} — 0x{ntdll_end:016x}")
+print()
+print("Detection logic (pseudocode):")
+print("  after_syscall:")
+print("    ret_addr = value_of(RCX)  // syscall stores return addr in RCX")
+print(f"    if ret_addr < 0x{ntdll_base:016x} or ret_addr > 0x{ntdll_end:016x}:")
+print("      ALERT: direct syscall from non-ntdll code!")
+print()
+print("This is what CrowdStrike Falcon and SentinelOne use.")
+print("The kernel provides this via ETW Threat Intelligence.")
+```
+
 ---
 
 ## Section 6: The Evasion Trade-Off — Empirical Data

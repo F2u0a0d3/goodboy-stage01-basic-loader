@@ -41,7 +41,7 @@ Each stage adds one new offensive technique on top of the previous. Each Learnin
 | [**06**](stage-06-earlybird-apc/) | **Variant Analysis** | Same technique different keys, family clustering, cross-variant YARA, invariant detection | 1,191 | Released |
 | [**07**](stage-07-direct-syscalls/) | **Direct Syscalls** | SSN resolution, inline syscall instruction, hook bypass, call stack forensics, evasion trade-off | 768 | Released |
 | [**08**](stage-08-indirect-syscalls/) | **Indirect Syscalls** | Gadget scanning, CALL-based indirection, call stack evasion, zero syscall in .text | 527 | Released |
-| 09 | Anti-Debug | 7 techniques: PEB, NtQueryInfo, RDTSC, hardware breakpoints, process enumeration | — | Planned |
+| [**09**](stage-09-anti-debug/) | **Anti-Debug** | 7 techniques: PEB&times;2, NtQIP&times;3, RDTSC timing, hardware breakpoints, evasion paradox | 766 | Released |
 | 10 | Anti-Sandbox | Hardware fingerprinting, weighted scoring, VM evasion | — | Planned |
 | 11 | Persistence | Registry Run key, scheduled tasks, COM hijacking | — | Planned |
 | 12 | Module Stomping | Overwrite legitimate DLL .text section, CFG-valid execution | — | Planned |
@@ -163,8 +163,8 @@ The Learning Paths document the full forensic timeline of each binary's VT histo
 
 | Metric | Value |
 |--------|-------|
-| Stages | 15 (8 released, 7 planned) |
-| Total learning content | 9,000+ lines (released stages) |
+| Stages | 15 (9 released, 6 planned) |
+| Total learning content | 10,200+ lines (released stages) |
 | Exercises | 30+ hands-on (released stages) |
 | YARA rules | 6+ (with adversarial countermeasures) |
 | Sigma rules | 3+ (behavioral detection) |

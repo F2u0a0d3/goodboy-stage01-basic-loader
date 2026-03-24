@@ -151,7 +151,7 @@ PEB structure (key offsets):
 │ +0x01  ReadImageFileExecOptions          │
 │ +0x02  BeingDebugged ◄──── anti-debug    │
 │ +0x10  ImageBaseAddress                  │
-│ +0x18  Ldr ────────────► PEB_LDR_DATA   │
+│ +0x18  Ldr ────────────► PEB_LDR_DATA    │
 │ +0x20  ProcessParameters                 │
 │ +0xBC  NtGlobalFlag ◄──── anti-debug     │
 └──────────────────────────────────────────┘
@@ -391,7 +391,7 @@ IMAGE_EXPORT_DIRECTORY:
 │  +0x18  NumberOfNames      = 1600            │
 │  +0x1C  AddressOfFunctions → [RVA, RVA, ...] │  function addresses
 │  +0x20  AddressOfNames     → [RVA, RVA, ...] │  name string pointers
-│  +0x24  AddressOfNameOrdinals→ [u16, u16,...] │  index mapping
+│  +0x24  AddressOfNameOrdinals→ [u16, u16,...]│  index mapping
 └──────────────────────────────────────────────┘
 
 Lookup for "VirtualAlloc" (hash 0x1C02DEBA):
@@ -929,18 +929,18 @@ netdiag.exe execution:
   PEB.BeingDebugged check        [gate 4 — anti-debug]
   sandbox_check()                [gate 5 — CPU/RAM/disk/uptime]
 
-  ┌─── NEW: Cross-DLL Resolution ───────────────────────────┐
+  ┌─── NEW: Cross-DLL Resolution ────────────────────────────┐
   │ resolve_api(kernel32, LoadLibraryA)  → function pointer  │
   │ LoadLibraryA("user32.dll")           → user32 loaded     │
   │ resolve_api(user32, MessageBoxW)     → function pointer  │
-  │ MessageBoxW("GoodBoy", "Stage 04")  → dialog appears    │
+  │ MessageBoxW("GoodBoy", "Stage 04")  → dialog appears     │
   └──────────────────────────────────────────────────────────┘
 
-  ┌─── NEW: ntdll Enumeration ──────────────────────────────┐
-  │ resolve_api(ntdll, NtAllocateVirtualMemory)  → stored   │
-  │ resolve_api(ntdll, NtProtectVirtualMemory)   → stored   │
-  │ resolve_api(ntdll, NtCreateThreadEx)         → stored   │
-  │ (resolved but not called — foreshadows Stage 07)        │
+  ┌─── NEW: ntdll Enumeration ───────────────────────────────┐
+  │ resolve_api(ntdll, NtAllocateVirtualMemory)  → stored    │
+  │ resolve_api(ntdll, NtProtectVirtualMemory)   → stored    │
+  │ resolve_api(ntdll, NtCreateThreadEx)         → stored    │
+  │ (resolved but not called — foreshadows Stage 07)         │
   └──────────────────────────────────────────────────────────┘
 
   XOR decrypt shellcode            [same as Stages 01-02]

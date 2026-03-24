@@ -219,12 +219,12 @@ Stage 04 (local execution):         Stage 05 (remote APC injection):
                                      │ [exit — job done]     │
                                      └───────────────────────┘
                                               │
-                                     ┌────────▼────────────┐
-                                     │ charmap.exe          │
-                                     │                      │
-                                     │ [stub XOR decrypts]  │
-                                     │ [shellcode runs here]│
-                                     └─────────────────────┘
+                                     ┌────────▼──────────────┐
+                                     │ charmap.exe           │
+                                     │                       │
+                                     │ [stub XOR decrypts]   │
+                                     │ [shellcode runs here] │
+                                     └───────────────────────┘
 ```
 
 Key differences:
@@ -266,7 +266,7 @@ Injector's memory:                     Target's memory (charmap.exe):
 │                  │          ▼        │                              │
 │ intermediate     │◄─────────┘        │                              │
 │ (XOR'd, 0x38..)  │                   │                              │
-│ *** NOT shellcode │                   │                              │
+│ *** NOT shellcode│                   │                              │
 ├──────────────────┤                   │                              │
 │ INNER_KEY        │                   │                              │
 │ (16 bytes)       │                   │                              │

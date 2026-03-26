@@ -44,7 +44,7 @@ Each stage adds one new offensive technique on top of the previous. Each Learnin
 | [**09**](stage-09-anti-debug/) | **Anti-Debug** | 7 techniques: PEB&times;2, NtQIP&times;3, RDTSC timing, hardware breakpoints, evasion paradox | 766 | Released |
 | [**10**](stage-10-anti-sandbox/) | **Anti-Sandbox** | Hardware fingerprinting, weighted scoring, CFG-safe sandbox detection, dual anti-analysis | 1,008 | Released |
 | [**11**](stage-11-persistence/) | **Persistence** | Registry Run key, path obfuscation, direct IAT imports, set-execute-cleanup lifecycle | 1,144 | Released |
-| 12 | Module Stomping | Overwrite legitimate DLL .text section, CFG-valid execution | — | Planned |
+| [**12**](stage-12-module-stomping/) | **Module Stomping** | Overwrite DLL .text at entry point, CFG-valid execution, inline PE parsing, pe-sieve evasion | 1,230 | Released |
 | 13 | Sleep Obfuscation | Encrypt payload during sleep, 95% scanner miss rate | — | Planned |
 | 14 | Combined Loader | 8-layer evasion stack, MBA obfuscation, multi-phase chain | — | Planned |
 | 15 | C2 Agent | Full command-and-control with encrypted HTTPS beaconing | — | Planned |
@@ -163,8 +163,8 @@ The Learning Paths document the full forensic timeline of each binary's VT histo
 
 | Metric | Value |
 |--------|-------|
-| Stages | 15 (11 released, 4 planned) |
-| Total learning content | 13,800+ lines (released stages) |
+| Stages | 15 (12 released, 3 planned) |
+| Total learning content | 15,000+ lines (released stages) |
 | Exercises | 60+ hands-on (released stages) |
 | YARA rules | 18+ (with adversarial countermeasures) |
 | Sigma rules | 7+ (behavioral detection) |

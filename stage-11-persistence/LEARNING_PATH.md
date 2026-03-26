@@ -932,6 +932,233 @@ startmgr_9_done.txt           → Full chain completed
 4. Ensure the new method also uses runtime path construction (no plaintext signatures)
 5. Test that both methods are set and cleaned up correctly
 
+### YARA Rule: Obfuscated Registry Path (u16 Hex Segments)
+
+```yara
+rule Obfuscated_Registry_Run_Path
+{
+    meta:
+        description = "Detects u16 hex-encoded registry Run key path segments in .rdata"
+        author = "Goodboy Course"
+        stage = "11"
+
+    strings:
+        // "Software\" as u16 LE: 53 00 6F 00 66 00 74 00 77 00 61 00 72 00 65 00 5C 00
+        $seg_soft = { 53 00 6F 00 66 00 74 00 77 00 61 00 72 00 65 00 5C 00 }
+        // "Microsoft\" as u16 LE
+        $seg_ms   = { 4D 00 69 00 63 00 72 00 6F 00 73 00 6F 00 66 00 74 00 5C 00 }
+        // "Run" as u16 LE (terminal segment)
+        $seg_run  = { 52 00 75 00 6E 00 }
+        // Registry APIs in IAT
+        $reg_open = "RegOpenKeyExW" ascii
+        $reg_set  = "RegSetValueExW" ascii
+
+    condition:
+        uint16(0) == 0x5A4D and
+        all of ($seg_*) and
+        $reg_open and $reg_set
+}
+```
+
+> **Key insight**: Even though `build_run_path()` uses `black_box()` barriers to prevent the compiler from merging segments, the individual u16 arrays still appear in `.rdata` as separate byte sequences. YARA can match each segment independently. The obfuscation defeats *contiguous string* signatures but NOT *individual segment* signatures.
+
+### Python Script: Sysmon Event 13 Persistence Analyzer
+
+```python
+#!/usr/bin/env python3
+"""Parse Sysmon Event 13 logs to detect registry persistence set/delete pairs.
+Calculates persistence window duration and correlates with process events.
+Feed exported Sysmon XML or use with PowerShell pipeline."""
+
+import xml.etree.ElementTree as ET
+import sys, re, json
+from datetime import datetime
+
+def parse_sysmon_events(xml_path):
+    """Parse exported Sysmon XML for Event ID 12/13 (registry events)."""
+    events = []
+    try:
+        tree = ET.parse(xml_path)
+        root = tree.getroot()
+    except ET.ParseError:
+        # Try as raw event list
+        with open(xml_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        content = f"<Events>{content}</Events>"
+        root = ET.fromstring(content)
+
+    ns = {"e": "http://schemas.microsoft.com/win/2004/08/events/event"}
+
+    for event in root.iter():
+        if event.tag.endswith("Event") or event.tag == "Event":
+            event_data = {}
+            for data in event.iter():
+                name = data.get("Name", data.tag.split("}")[-1] if "}" in data.tag else data.tag)
+                if data.text:
+                    event_data[name] = data.text
+
+            event_id = event_data.get("EventID", "")
+            if event_id in ("12", "13", "14"):
+                events.append({
+                    "event_id": int(event_id),
+                    "timestamp": event_data.get("UtcTime", event_data.get("TimeCreated", "")),
+                    "process": event_data.get("Image", ""),
+                    "target": event_data.get("TargetObject", ""),
+                    "details": event_data.get("Details", ""),
+                    "event_type": event_data.get("EventType", ""),
+                })
+    return events
+
+def analyze_persistence(events):
+    """Find set/delete pairs targeting Run keys."""
+    run_events = [e for e in events if "\\CurrentVersion\\Run\\" in e.get("target", "")]
+
+    sets = [e for e in run_events if e["event_id"] == 13]
+    deletes = [e for e in run_events if e["event_id"] == 12 and "DeleteValue" in e.get("event_type", "")]
+
+    print(f"Registry Run Key Events: {len(run_events)}")
+    print(f"  Value Sets (Event 13): {len(sets)}")
+    print(f"  Value Deletes (Event 12): {len(deletes)}")
+    print()
+
+    # Match set/delete pairs by value name
+    for s in sets:
+        value_name = s["target"].split("\\")[-1]
+        matching_delete = None
+        for d in deletes:
+            if d["target"].split("\\")[-1] == value_name:
+                matching_delete = d
+                break
+
+        process = s["process"].split("\\")[-1] if s["process"] else "?"
+        print(f"  \033[91m[SET]\033[0m {value_name}")
+        print(f"    Process: {process}")
+        print(f"    Target:  {s['target']}")
+        print(f"    Data:    {s.get('details', 'N/A')}")
+        print(f"    Time:    {s['timestamp']}")
+
+        if matching_delete:
+            print(f"  \033[92m[DEL]\033[0m {value_name}")
+            print(f"    Time:    {matching_delete['timestamp']}")
+            # Calculate window
+            try:
+                t_set = datetime.fromisoformat(s["timestamp"].replace(" ", "T"))
+                t_del = datetime.fromisoformat(matching_delete["timestamp"].replace(" ", "T"))
+                window = (t_del - t_set).total_seconds()
+                print(f"    \033[93mPersistence window: {window:.1f} seconds\033[0m")
+            except (ValueError, TypeError):
+                print(f"    Persistence window: unable to parse timestamps")
+        else:
+            print(f"  \033[91m[NO DELETE]\033[0m Value still persists!")
+        print()
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print(f"Usage: {sys.argv[0]} <sysmon_export.xml>")
+        print(f"  Export: wevtutil qe Microsoft-Windows-Sysmon/Operational /f:xml > sysmon.xml")
+        sys.exit(1)
+
+    events = parse_sysmon_events(sys.argv[1])
+    if not events:
+        print("No Sysmon events found. Check the XML format.")
+        sys.exit(1)
+
+    analyze_persistence(events)
+```
+
+### Exercise 9.1: Write a YARA Rule for u16 Path Detection
+
+**Question**: The `Obfuscated_Registry_Run_Path` YARA rule above matches individual u16 segments. But what if the attacker uses a different registry path (e.g., `HKCU\Software\Classes\CLSID\...` for COM hijacking)? Write a more generic YARA rule that detects ANY u16-encoded registry path containing `Software\Microsoft\` regardless of the specific subkey.
+
+<details>
+<summary>Answer</summary>
+
+```yara
+rule Generic_U16_Registry_Path
+{
+    meta:
+        description = "Detects u16 hex-encoded registry paths with Microsoft prefix"
+
+    strings:
+        // "Software\Microsoft\" is common to Run keys, COM hijack, service config
+        $seg_soft_ms = { 53 00 6F 00 66 00 74 00 77 00 61 00 72 00 65 00 5C 00
+                         4D 00 69 00 63 00 72 00 6F 00 73 00 6F 00 66 00 74 00 5C 00 }
+        // Registry write API
+        $reg_api = "RegSetValueExW" ascii
+
+    condition:
+        uint16(0) == 0x5A4D and $seg_soft_ms and $reg_api
+}
+```
+
+**Key insight**: If the segments are contiguous (no `black_box()` barrier between "Software\" and "Microsoft\"), YARA can match the full 38-byte sequence in one pattern. If `black_box()` separates them, the compiler may place them non-contiguously and this rule would miss. The Stage 11 binary uses `black_box()` on each segment separately — whether the compiler keeps them adjacent depends on optimization level.
+
+</details>
+
+### Exercise 9.2: Forensic Timeline from Breadcrumbs
+
+**Question**: You find these breadcrumb files in `%TEMP%` on a compromised system:
+
+```
+startmgr_1_start.txt          Created: 14:23:01.234
+startmgr_2_checks_ok.txt      Created: 14:23:01.250
+startmgr_3_window_done.txt    Created: 14:23:01.312
+startmgr_4_debug_ok.txt       Created: 14:23:01.480
+startmgr_5_sandbox_score_0.txt Created: 14:23:01.495
+startmgr_5_sandbox_ok.txt     Created: 14:23:01.496
+startmgr_6_persist_set.txt    Created: 14:23:01.510
+```
+
+Files `startmgr_7_pre_thread.txt` through `startmgr_9_done.txt` are MISSING. What happened?
+
+<details>
+<summary>Answer</summary>
+
+The binary passed all 7 evasion gates (files 1-6 present) and successfully set the registry Run key (file 6 = `persist_set`). But the shellcode execution failed — file 7 (`pre_thread`) would have been written just before `CreateThread`, so the failure occurred between `VirtualProtect` changing permissions and the thread creation.
+
+Possible causes:
+1. **VirtualProtect failed** (returned 0): The `PAGE_EXECUTE_READ` protection change was denied, possibly by EDR hooking VirtualProtect
+2. **CreateThread failed** (returned null): CFG blocked the thread start address, or DEP policy prevented execution from the allocated region
+3. **Shellcode crashed**: The thread was created but the shellcode itself crashed before reaching the MessageBox call (corrupt decryption, wrong key, incompatible shellcode)
+
+**How to investigate**: Check for a `startmgr_FAIL_alloc.txt` (allocation failed) or `startmgr_FAIL_thread.txt` (thread creation failed). If neither exists, the failure is between the last dbg() call and the next checkpoint — specifically in the VirtualProtect→CreateThread sequence.
+
+**The persistence key was set but never cleaned up** (file 8 = `persist_clean` is missing). This means `HKCU\...\Run\StartupOptSvc` still exists on the system and will attempt to re-execute the binary on next logon. An IR responder should immediately check `reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v StartupOptSvc`.
+
+</details>
+
+### Section 7B: Hardening Registry Persistence Monitoring
+
+**Layered defense for detecting and preventing registry persistence:**
+
+```
+Layer 1: Sysmon (real-time)
+  ☐ Deploy Sysmon v15+ with RegistryEvent rules for \CurrentVersion\Run\
+  ☐ Include Event ID 12 (Create/Delete) + 13 (ValueSet) + 14 (Rename)
+  ☐ Forward events to SIEM with <30s latency
+  ☐ Alert on unsigned binaries writing to Run keys
+
+Layer 2: Autoruns Baseline (periodic)
+  ☐ Run Autoruns /a /accepteula /m -s weekly via scheduled task
+  ☐ Diff against known-good baseline (autorunsc -a * -c > baseline.csv)
+  ☐ Alert on any NEW entry not in baseline
+  ☐ Special attention to non-standard paths (outside Program Files)
+
+Layer 3: AppLocker / WDAC (preventive)
+  ☐ Restrict Run key executables to signed binaries only
+  ☐ Use path rules: allow only C:\Program Files\*, C:\Windows\*
+  ☐ Audit mode first → 30 days → enforce mode
+  ☐ Exception process for legitimate unsigned software
+
+Layer 4: EDR Behavioral Rules (detection)
+  ☐ Alert on: RegSetValueExW → VirtualAlloc → VirtualProtect → CreateThread
+    within same process within 5 seconds (persistence + injection combo)
+  ☐ Alert on: Run key set then deleted within 60 seconds (demo/testing pattern)
+  ☐ Alert on: Process from non-standard path writing to Run keys
+```
+
+**Key insight**: No single layer catches everything. Sysmon catches the write but not the execution. AppLocker prevents execution but not the write. EDR correlates both but may miss obfuscated paths. Autoruns catches persistent changes but not transient set-then-delete patterns. Use all four layers.
+
 ---
 
 ## Adversarial Thinking — Evolving Past Registry Persistence

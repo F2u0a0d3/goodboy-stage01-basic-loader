@@ -49,7 +49,7 @@ Plus 7 evasion gates (benign checks, GUI lifecycle, anti-debug, anti-sandbox) in
 
 | File | Description |
 |------|-------------|
-| `LEARNING_PATH.md` | **1,144 lines** — Registry persistence deep dive, path obfuscation, YARA/Sigma rules, 2 Python scripts, Sysmon config, 8 exercises, adversarial challenges |
+| `LEARNING_PATH.md` | **1,371 lines** — Registry persistence deep dive, path obfuscation, 2 YARA rules, Sigma rule, 3 Python scripts, Sysmon config, defense hardening guide, 10 exercises, adversarial challenges |
 | `persistence-demo.exe` | The compiled binary (~367 KB, Rust, PE64) — sets Run key, executes, cleans up |
 
 ---

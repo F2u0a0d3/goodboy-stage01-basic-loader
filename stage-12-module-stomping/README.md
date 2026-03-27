@@ -49,7 +49,7 @@ Plus 7 evasion gates (benign checks, GUI lifecycle, anti-debug, anti-sandbox) in
 
 | File | Description |
 |------|-------------|
-| `LEARNING_PATH.md` | **1,230 lines** — Module stomping deep dive, PE parsing, CFG targeting, 2 YARA rules, Sigma rule, 3 Python scripts, defense hardening, adversarial challenges |
+| `LEARNING_PATH.md` | **1,232 lines** — Module stomping deep dive, PE parsing, CFG targeting, 2 YARA rules, Sigma rule, 3 Python scripts, defense hardening, adversarial challenges |
 | `module-stomping.exe` | The compiled binary (~365 KB, Rust, PE64) — stomps clbcatq.dll's entry point |
 
 ---

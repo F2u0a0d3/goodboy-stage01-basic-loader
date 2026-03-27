@@ -348,7 +348,7 @@ Step 4: Overwrite Entry Point
 ┌──────────────────────────────────┐
 │ copy_nonoverlapping(             │
 │   shellcode → entry_addr,        │
-│   302 bytes                        │
+│   302 bytes                      │
 │ )                                │
 │ Rest of .text stays intact       │
 └──────────────────────────────────┘
@@ -357,7 +357,7 @@ Step 5: VirtualProtect → RX
 ┌──────────────────────────────────┐
 │ VirtualProtect(.text, RX)        │  ← via apihash
 │ (text_addr, text_vsize, 0x20)    │
-│ W^X compliant — never RWX       │
+│ W^X compliant — never RWX        │
 └──────────────────────────────────┘
            │
 Step 6: Execute via CreateThread
@@ -403,7 +403,7 @@ The DLL's `AddressOfEntryPoint` (DllMain) is always CFG-valid because:
 
 ```
 CFG Bitmap Check:
-┌─────────────────────────────────────────────┐
+┌──────────────────────────────────────────────┐
 │ CreateThread(start_addr)                     │
 │   → Is start_addr in CFG valid targets?      │
 │                                              │
@@ -412,7 +412,7 @@ CFG Bitmap Check:
 │                                              │
 │   DLL entry point:     ✓ IN CFG bitmap       │
 │   → Thread starts normally                   │
-└─────────────────────────────────────────────┘
+└──────────────────────────────────────────────┘
 ```
 
 ### Entry Point Validation
@@ -549,35 +549,35 @@ Tools: pe-sieve, Moneta, Process Hacker memory view
 │    Memory scanners see "clbcatq.dll" → skip deep check  │
 │                                                         │
 │ 2. PE PARSING CHAIN                                     │
-│    DOS (MZ) → e_lfanew → NT (PE) → OptHdr (EP RVA)     │
+│    DOS (MZ) → e_lfanew → NT (PE) → OptHdr (EP RVA)      │
 │    → Section[] → .text (RVA, VSize) → validate EP       │
 │                                                         │
 │ 3. CFG-VALID TARGETING                                  │
-│    Entry point is in CFG bitmap (registered by loader)   │
-│    Random .text offsets would fail CFG and crash          │
+│    Entry point is in CFG bitmap (registered by loader)  │
+│    Random .text offsets would fail CFG and crash        │
 │                                                         │
 │ 4. W^X LIFECYCLE                                        │
 │    RX → RW (write SC) → RX (execute)                    │
-│    Never RWX — each transition via VirtualProtect        │
+│    Never RWX — each transition via VirtualProtect       │
 │                                                         │
 │ 5. API RESOLUTION                                       │
-│    All 5 injection APIs via apihash (PEB walk)           │
-│    +2 ExitProcess for anti-debug/sandbox bail-out        │
-│    Zero injection APIs in IAT                            │
+│    All 5 injection APIs via apihash (PEB walk)          │
+│    +2 ExitProcess for anti-debug/sandbox bail-out       │
+│    Zero injection APIs in IAT                           │
 │                                                         │
 │ 6. 7-GATE EVASION                                       │
-│    Env check → Benign preflight → Uptime → GUI →         │
-│    Anti-debug → Analysis tools → Hardware sandbox        │
+│    Env check → Benign preflight → Uptime → GUI →        │
+│    Anti-debug → Analysis tools → Hardware sandbox       │
 │                                                         │
 │ 7. DETECTION                                            │
-│    On-disk vs in-memory hash comparison (pe-sieve)       │
-│    ETW: VirtualProtect on module .text regions           │
-│    Behavioral: LoadLibrary without GetProcAddress         │
-│    Sysmon: clbcatq.dll load in non-COM+ process          │
+│    On-disk vs in-memory hash comparison (pe-sieve)      │
+│    ETW: VirtualProtect on module .text regions          │
+│    Behavioral: LoadLibrary without GetProcAddress       │
+│    Sysmon: clbcatq.dll load in non-COM+ process         │
 │                                                         │
 │ 8. SACRIFICIAL DLL CHOICE                               │
-│    clbcatq.dll: signed, obscure, not monitored, large    │
-│    .text, minimal DllMain, not already loaded             │
+│    clbcatq.dll: signed, obscure, not monitored, large   │
+│    .text, minimal DllMain, not already loaded           │
 │                                                         │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -692,7 +692,7 @@ CFG Bitmap Validation:
 │ When the Windows loader maps clbcatq.dll:          │
 │   1. Reads OptionalHeader.AddressOfEntryPoint      │
 │   2. Adds this RVA to the process CFG bitmap       │
-│   3. DllMain is called at this address              │
+│   3. DllMain is called at this address             │
 │                                                    │
 │ When CreateThread(entry_addr) is called:           │
 │   1. OS checks: is entry_addr in CFG bitmap?       │
@@ -713,7 +713,7 @@ VirtualAlloc (traditional injection):
 │ Protect:    PAGE_EXECUTE_READ           │
 │ Mapped File: (none)                     │  ← NO backing module
 │ VAD:        Private region              │  ← EDR flags this as suspicious
-│ pe-sieve:   ANOMALY — unbacked RX      │
+│ pe-sieve:   ANOMALY — unbacked RX       │
 └─────────────────────────────────────────┘
 
 Module stomping (this implementation):
@@ -724,7 +724,7 @@ Module stomping (this implementation):
 │ Mapped File: C:\Windows\System32\       │
 │              clbcatq.dll                │  ← Backed by Microsoft-signed DLL
 │ VAD:        Image region (trusted)      │  ← EDR skips deep inspection
-│ pe-sieve:   Content mismatch at EP     │  ← Only caught by hash comparison
+│ pe-sieve:   Content mismatch at EP      │  ← Only caught by hash comparison
 └─────────────────────────────────────────┘
 ```
 

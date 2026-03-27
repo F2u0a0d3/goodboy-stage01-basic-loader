@@ -246,7 +246,7 @@ Before the module stomping chain executes, the binary passes through seven evasi
 |------|----------|-------|------------|
 | 1 | `init_app_environment()` | 5 environment variables exist (SystemRoot, USERPROFILE, LOCALAPPDATA, ProgramData, windir) | `svcctrl_1_start` |
 | 2 | `common::benign::preflight()` | Benign code dilution — BTreeMap, HashMap, HashSet operations (always passes on real systems) | `svcctrl_2_checks_ok` |
-| 3 | Inline KUSER_SHARED_DATA read | `0x7FFE0320` → InterruptTime > 300,000 (uptime > 5 minutes) | — |
+| 3 | Inline KUSER_SHARED_DATA read | `0x7FFE0320` → TickCountQuad > 300,000 (~78 minutes) | — |
 | 4 | `run_window_lifecycle()` | Creates "SvcCtrlWnd" window class, 1x1 window, 50ms timer, message loop, destroy | `svcctrl_3_window_done` |
 | 5 | `antidebug::bail_if_debugged()` | PEB.BeingDebugged + NtQueryInformationProcess(DebugPort) + RDTSC timing + Hardware breakpoint check | — |
 | 6 | `antidebug::check_analysis_tools()` | Scans running processes for 27 analysis tool names | `svcctrl_4_debug_ok` |
@@ -1146,10 +1146,12 @@ Before stomp (entry point at base+0x1000):
   00007FFD12341005: 57              push rdi
   ...
 
-After stomp:
-  00007FFD12341000: 31 C0           xor eax, eax
-  00007FFD12341002: C3              ret
-  00007FFD12341003: 5C 24 08 57...  (rest is original code, unchanged)
+After stomp (302 bytes overwritten at entry point):
+  00007FFD12341000: E9 BE 00 00 00  jmp +0xBE (shellcode prologue)
+  00007FFD12341005: 41 51           push r9
+  00007FFD12341007: 41 50           push r8
+  ...                               (302 bytes of shellcode)
+  00007FFD1234112E: 5C 24 08 57...  (rest is original code, unchanged)
 ```
 
 **Step 3: Run pe-sieve against the process**

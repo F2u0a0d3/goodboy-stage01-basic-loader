@@ -743,8 +743,8 @@ rule Module_Stomp_Apihash_LoadLib
     strings:
         // gs:[0x60] PEB access
         $peb_access = { 65 48 8B 04 25 60 00 00 00 }
-        // Additive hash seed 0x1F2E3D4C
-        $hash_seed = { 4C 3D 2E 1F }
+        // Rotate-xor hash seed 0x7C3A91D5 (common library apihash)
+        $hash_seed = { D5 91 3A 7C }
         // LoadLibraryA string (sacrificial DLL loading)
         $load_lib = "LoadLibraryA" ascii
         // Sacrificial DLL names
